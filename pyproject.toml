@@ -7,3 +7,18 @@ dependencies = [
     "pigpio>=1.78",
     "rpi-lgpio>=0.6",
 ]
+
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.15.11",
+    "ty>=0.0.31",
+]
+
+[project.scripts]
+status = "drink_dispenser.machine_status:main"
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12.0"]
+build-backend = "uv_build"
