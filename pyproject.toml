@@ -17,7 +17,7 @@ dev = [
 ]
 
 [project.scripts]
-status = "drink_dispenser.machine_status:main"
+basic_bar = "drink_dispenser.machine_status:main"
 
 [build-system]
 requires = ["uv_build>=0.11.6,<0.12.0"]
