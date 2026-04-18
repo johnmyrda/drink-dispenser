@@ -1,15 +1,38 @@
 import atexit
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
+from enum import Enum
 from itertools import count
 from typing import Optional
 
 from gpiozero import Button, DigitalOutputDevice, PWMOutputDevice, Factory
 import configparser
 
+DEBUG = False
+
 
 class DrinkButton(Button):
+    def __init__(
+        self,
+        pin=None,
+        *,
+        pull_up,
+        active_state=None,
+        hold_repeat=False,
+        pin_factory=None,
+    ):
+        bounce_time = 0.02
+        super().__init__(
+            pin=pin,
+            pull_up=pull_up,
+            active_state=active_state,
+            bounce_time=bounce_time,
+            hold_repeat=hold_repeat,
+            pin_factory=pin_factory,
+        )
+
     def status(self):
         if self.is_active:
             return "_"
@@ -52,32 +75,87 @@ class Pump(DigitalOutputDevice):
             super().on()
 
 
+class SlotStatus(Enum):
+    OFF = 0
+    AUTO_DISPENSE = 1
+    MANUAL_DISPENSE = 2
+
+
 @dataclass
 class DrinkSlot:
     button: DrinkButton
     light: ButtonLight
     pump: Pump
+    status: SlotStatus = SlotStatus.OFF
     id: int = -1
     _ids = count(0)
+    last_transition_time = time.time()
 
     def __post_init__(self):
         self.id = next(self._ids)
-        print("Slot number " + str(self.id))
-        print(self)
+        if DEBUG:
+            print("Slot number " + str(self.id))
+            print(self)
         self.default_action()
 
     def default_action(self):
-        self.button.when_pressed = lambda: self.activate()
-        self.button.when_released = lambda: self.stop()
+        self.button.when_pressed = self.button_pressed
+        self.button.when_released = self.button_released
+        self.button.when_held = self.manual_dispense
+
+    def manual_dispense(self):
+        self.set_state(SlotStatus.MANUAL_DISPENSE)
+        threading.Thread(target=self._manual_dispense, daemon=True).start()
+
+    def _manual_dispense(self):
+        # Flash as a visual indicator of mode change
+        self.light.animate_pulse(10)
+        time.sleep(0.2)
+        if self.button.is_active:
+            # Go back to previous state
+            self.light.animate_pulse()
+
+    def auto_dispense(self, seconds: float):
+        self.set_state(SlotStatus.AUTO_DISPENSE)
+        threading.Thread(
+            target=self._auto_dispense, args=[seconds], daemon=True
+        ).start()
+
+    def _auto_dispense(self, seconds: float):
+        self.activate()
+        time.sleep(seconds)
+        if self.status == SlotStatus.AUTO_DISPENSE:
+            self.stop()
+
+    def button_pressed(self):
+        if DEBUG:
+            print("Button pressed - status: " + str(self.status))
+        if self.status == SlotStatus.AUTO_DISPENSE:
+            self.manual_dispense()
+        if self.status == SlotStatus.OFF:
+            self.auto_dispense(4.5)
+
+    def button_released(self):
+        if self.status == SlotStatus.MANUAL_DISPENSE:
+            self.stop()
 
     def activate(self):
-        # self.light.on()
         self.light.animate_pulse()
         self.pump.on()
+        # self.activation_start_time = time.time()
 
     def stop(self):
         self.light.off()
         self.pump.off()
+        self.set_state(SlotStatus.OFF)
+
+    def set_state(self, state: SlotStatus):
+        now = time.time()
+        transition_time = now - self.last_transition_time
+        self.last_transition_time = now
+        if DEBUG:
+            print(f"Slot {self.id}: {self.status} -> {state} ({transition_time:.2f}s)")
+        self.status = state
 
     def cleanup(self):
         self.button.close()
