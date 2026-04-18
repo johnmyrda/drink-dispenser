@@ -1,5 +1,6 @@
 import atexit
 import subprocess
+import time
 from dataclasses import dataclass
 from itertools import count
 from typing import Optional
@@ -34,6 +35,9 @@ class ButtonLight(PWMOutputDevice):
         )
 
     def animate_pulse(self, speed: int = 100):
+        """
+        :param speed: Speed scale - higher is slower, lower is faster.
+        """
         fade_time = speed * 0.005
         self.pulse(fade_in_time=fade_time, fade_out_time=fade_time, background=True)
 
@@ -84,7 +88,7 @@ class DrinkSlot:
 class DrinkDispenser:
     slots: list[DrinkSlot] = []
     buttons: list[DrinkButton] = []
-    lights: list[PWMOutputDevice] = []
+    lights: list[ButtonLight] = []
 
     def __init__(self) -> None:
         config = configparser.ConfigParser()
@@ -112,6 +116,34 @@ class DrinkDispenser:
 
     def button_status(self):
         return "BUTTONS: " + " ".join([button.status() for button in self.buttons])
+
+    def lights_on(self):
+        for light in self.lights:
+            light.on()
+
+    def lights_off(self):
+        for light in self.lights:
+            light.off()
+
+    def startup_lights(self):
+        scaling_factor = 1
+        crossover_time = 0.1
+        for i in range(1, 5):
+            sleep_time = 0.5 * scaling_factor
+            for j, light in enumerate(self.lights):
+                pulse_speed = int(100 * (sleep_time + crossover_time)) + 10
+                light.animate_pulse(pulse_speed)
+                time.sleep(crossover_time)
+                self.lights[j - 1].off()
+                time.sleep(sleep_time)
+            scaling_factor = max(0.1, scaling_factor - 0.2)
+            self.lights_off()
+        time.sleep(0.3)
+        for i in range(1, 4):
+            self.lights_on()
+            time.sleep(0.3)
+            self.lights_off()
+            time.sleep(0.1)
 
     def cleanup(self):
         for slot in self.slots:

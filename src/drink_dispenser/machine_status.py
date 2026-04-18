@@ -5,6 +5,7 @@ import time
 def main():
     machine = DrinkDispenser()
     machine.disable_pumps(disabled=True)
+    machine.startup_lights()
 
     try:
         while True:
