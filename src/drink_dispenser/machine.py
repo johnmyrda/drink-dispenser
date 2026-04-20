@@ -13,7 +13,8 @@ def main():
         machine.disable_pumps(disabled=True)
         print("Testing mode. Pumps disabled.")
     print("Bar's Open! Press Ctrl+C to exit.")
-    machine.startup_lights()
+    machine.animations.idle()
+    # machine.animations.startup()
 
     try:
         while True:

@@ -5,10 +5,13 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from itertools import count
-from typing import Optional
+from typing import Callable
 
-from gpiozero import Button, DigitalOutputDevice, PWMOutputDevice, Factory
+from gpiozero import Button, DigitalOutputDevice
 import configparser
+
+from drink_dispenser.animations import Animations
+from drink_dispenser.components import ButtonLight
 
 DEBUG = False
 
@@ -40,31 +43,6 @@ class DrinkButton(Button):
             return "o"
 
 
-class ButtonLight(PWMOutputDevice):
-    def __init__(
-        self,
-        pin: int | str,
-        *,
-        active_high: bool = True,
-        initial_value: float = 0,
-        pin_factory: Optional[Factory] = None,
-    ):
-        super().__init__(
-            pin=pin,
-            active_high=active_high,
-            initial_value=initial_value,
-            frequency=3000,  # 2kHz or higher needed to avoid flicker
-            pin_factory=pin_factory,
-        )
-
-    def animate_pulse(self, speed: int = 100):
-        """
-        :param speed: Speed scale - higher is slower, lower is faster.
-        """
-        fade_time = speed * 0.005
-        self.pulse(fade_in_time=fade_time, fade_out_time=fade_time, background=True)
-
-
 class Pump(DigitalOutputDevice):
     disabled: bool = False
 
@@ -86,6 +64,7 @@ class DrinkSlot:
     button: DrinkButton
     light: ButtonLight
     pump: Pump
+    status_callback: Callable[[SlotStatus], None] | None = None
     status: SlotStatus = SlotStatus.OFF
     id: int = -1
     _ids = count(0)
@@ -142,7 +121,6 @@ class DrinkSlot:
     def activate(self):
         self.light.animate_pulse()
         self.pump.on()
-        # self.activation_start_time = time.time()
 
     def stop(self):
         self.light.off()
@@ -156,6 +134,8 @@ class DrinkSlot:
         if DEBUG:
             print(f"Slot {self.id}: {self.status} -> {state} ({transition_time:.2f}s)")
         self.status = state
+        if self.status_callback:
+            self.status_callback(state)
 
     def cleanup(self):
         self.button.close()
@@ -167,6 +147,8 @@ class DrinkDispenser:
     slots: list[DrinkSlot] = []
     buttons: list[DrinkButton] = []
     lights: list[ButtonLight] = []
+    animations: Animations
+    last_off_time = time.time()
 
     def __init__(self) -> None:
         config = configparser.ConfigParser()
@@ -175,9 +157,9 @@ class DrinkDispenser:
         b1 = DrinkButton(config["Buttons"]["B1"], pull_up=False)
         b2 = DrinkButton(config["Buttons"]["B2"], pull_up=False)
         b3 = DrinkButton(config["Buttons"]["B3"], pull_up=None, active_state=True)
-        l1 = ButtonLight(config["Leds"]["L1"])
-        l2 = ButtonLight(config["Leds"]["L2"])
-        l3 = ButtonLight(config["Leds"]["L3"])
+        l1 = ButtonLight(config["LEDs"]["L1"])
+        l2 = ButtonLight(config["LEDs"]["L2"])
+        l3 = ButtonLight(config["LEDs"]["L3"])
         m1 = Pump(config["Motors"]["M1"])
         m2 = Pump(config["Motors"]["M2"])
         m3 = Pump(config["Motors"]["M3"])
@@ -186,7 +168,12 @@ class DrinkDispenser:
         )
         self.buttons.extend([s.button for s in self.slots])
         self.lights.extend([s.light for s in self.slots])
+        self.animations = Animations(self.lights)
         atexit.register(self.cleanup)
+
+    def idle_check(self, state: SlotStatus):
+        if state == SlotStatus.OFF:
+            self.last_off_time = time.time()
 
     def disable_pumps(self, disabled: bool) -> None:
         for slot in self.slots:
@@ -194,34 +181,6 @@ class DrinkDispenser:
 
     def button_status(self):
         return "BUTTONS: " + " ".join([button.status() for button in self.buttons])
-
-    def lights_on(self):
-        for light in self.lights:
-            light.on()
-
-    def lights_off(self):
-        for light in self.lights:
-            light.off()
-
-    def startup_lights(self):
-        scaling_factor = 1
-        crossover_time = 0.1
-        for i in range(1, 5):
-            sleep_time = 0.5 * scaling_factor
-            for j, light in enumerate(self.lights):
-                pulse_speed = int(100 * (sleep_time + crossover_time)) + 10
-                light.animate_pulse(pulse_speed)
-                time.sleep(crossover_time)
-                self.lights[j - 1].off()
-                time.sleep(sleep_time)
-            scaling_factor = max(0.1, scaling_factor - 0.2)
-            self.lights_off()
-        time.sleep(0.3)
-        for i in range(1, 4):
-            self.lights_on()
-            time.sleep(0.3)
-            self.lights_off()
-            time.sleep(0.1)
 
     def cleanup(self):
         for slot in self.slots:
