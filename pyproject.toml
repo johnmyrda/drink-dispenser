@@ -4,8 +4,9 @@ version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
     "gpiozero>=2.0.1",
-    "pigpio>=1.78",
-    "rpi-lgpio>=0.6",
+    # Raspberry Pi Only Dependencies
+    "pigpio>=1.78; platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "rpi-lgpio>=0.6; platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 
 
@@ -13,11 +14,14 @@ dependencies = [
 dev = [
     "pytest>=9.0.3",
     "ruff>=0.15.11",
-    "ty>=0.0.31",
+    "ty>=0.0.32",
 ]
 
 [project.scripts]
 basic_bar = "drink_dispenser.machine:main"
+sim = "drink_dispenser.gui:main"
+simulator = "drink_dispenser.gui:main"
+
 
 [build-system]
 requires = ["uv_build>=0.11.6,<0.12.0"]

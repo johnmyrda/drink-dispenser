@@ -15,7 +15,6 @@ from drink_dispenser.components import ButtonLight
 
 DEBUG = False
 
-
 class DrinkButton(Button):
     def __init__(
         self,
@@ -51,7 +50,6 @@ class Pump(DigitalOutputDevice):
             return
         else:
             super().on()
-
 
 class SlotStatus(Enum):
     OFF = 0
@@ -156,7 +154,7 @@ class DrinkDispenser:
         print(config.sections())
         b1 = DrinkButton(config["Buttons"]["B1"], pull_up=False)
         b2 = DrinkButton(config["Buttons"]["B2"], pull_up=False)
-        b3 = DrinkButton(config["Buttons"]["B3"], pull_up=None, active_state=True)
+        b3 = DrinkButton(config["Buttons"]["B3"], pull_up=True)
         l1 = ButtonLight(config["LEDs"]["L1"])
         l2 = ButtonLight(config["LEDs"]["L2"])
         l3 = ButtonLight(config["LEDs"]["L3"])
@@ -185,4 +183,4 @@ class DrinkDispenser:
     def cleanup(self):
         for slot in self.slots:
             slot.cleanup()
-        subprocess.run(["./gpio-reset.sh"], check=True)
+        subprocess.run(["./gpio-reset.sh"])
